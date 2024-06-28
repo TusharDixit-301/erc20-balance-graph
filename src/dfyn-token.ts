@@ -1,52 +1,41 @@
-import {
-  Approval as ApprovalEvent,
-  OwnershipTransferred as OwnershipTransferredEvent,
-  Transfer as TransferEvent
-} from "../generated/DFYNToken/DFYNToken"
-import { Approval, OwnershipTransferred, Transfer } from "../generated/schema"
+import { Transfer } from "../generated/DFYNToken/DFYNToken"
+import { TokenBalance } from "../generated/schema"
+import { BigInt, Address } from "@graphprotocol/graph-ts"
 
-export function handleApproval(event: ApprovalEvent): void {
-  let entity = new Approval(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  entity.owner = event.params.owner
-  entity.spender = event.params.spender
-  entity.value = event.params.value
+export function handleTransfer(event: Transfer): void {
+  let fromAddress = event.params.from
+  let toAddress = event.params.to
 
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
+  // Filter out zero addresses
+  if (fromAddress.equals(Address.zero()) || toAddress.equals(Address.zero())) {
+    return
+  }
 
-  entity.save()
-}
+  let fromId = fromAddress.toHex()
+  let toId = toAddress.toHex()
 
-export function handleOwnershipTransferred(
-  event: OwnershipTransferredEvent
-): void {
-  let entity = new OwnershipTransferred(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  entity.previousOwner = event.params.previousOwner
-  entity.newOwner = event.params.newOwner
+  let fromBalance = TokenBalance.load(fromId)
+  if (fromBalance == null) {
+    fromBalance = new TokenBalance(fromId)
+    fromBalance.user = fromAddress
+    fromBalance.balance = BigInt.fromI32(0)
+    fromBalance.timestamp = event.block.timestamp
+  }
 
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
+  let toBalance = TokenBalance.load(toId)
+  if (toBalance == null) {
+    toBalance = new TokenBalance(toId)
+    toBalance.user = toAddress
+    toBalance.balance = BigInt.fromI32(0)
+    toBalance.timestamp = event.block.timestamp
+  }
 
-  entity.save()
-}
+  fromBalance.balance = fromBalance.balance.minus(event.params.value)
+  fromBalance.timestamp = event.block.timestamp
 
-export function handleTransfer(event: TransferEvent): void {
-  let entity = new Transfer(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  entity.from = event.params.from
-  entity.to = event.params.to
-  entity.value = event.params.value
+  toBalance.balance = toBalance.balance.plus(event.params.value)
+  toBalance.timestamp = event.block.timestamp
 
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-
-  entity.save()
+  fromBalance.save()
+  toBalance.save()
 }
